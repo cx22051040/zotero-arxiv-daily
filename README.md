@@ -172,12 +172,43 @@ By default, the main workflow runs on 22:00 UTC everyday. You can change this ti
 ### Local Running
 Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
 ```bash
-# set all the environment variables
-# export ZOTERO_ID=xxxx
-# ...
 cd zotero-arxiv-daily
+
+# Windows PowerShell
+Copy-Item .env.example .env
+# Edit .env and fill in your Zotero, SMTP, and LLM API settings.
+
 uv run main.py
 ```
+
+### GitHub Actions Automation
+The repository includes two workflows:
+- `Send emails daily`: runs automatically at `22:00 UTC` every day, which is `06:00` in Asia/Shanghai.
+- `Test`: manual debug run that sends an email even when no new papers are found.
+
+Set these repository secrets in `Settings -> Secrets and variables -> Actions -> Secrets`:
+```text
+ZOTERO_ID
+ZOTERO_KEY
+SENDER
+SENDER_PASSWORD
+RECEIVER
+OPENAI_API_KEY
+```
+
+Set these repository variables in `Settings -> Secrets and variables -> Actions -> Variables` if you want to override the defaults:
+```text
+OPENAI_API_BASE=https://api.minimaxi.com/v1
+LLM_MODEL=MiniMax-M2.7
+SMTP_SERVER=smtp.qq.com
+SMTP_PORT=465
+EMAIL_USE_SSL=true
+RESEARCH_INTERESTS=artificial intelligence; computer vision; machine learning; natural language processing; large language models
+ARXIV_EXTRACT_FULL_TEXT=false
+MAX_PAPER_NUM=20
+```
+
+If SMTP sending fails, the workflow uploads the rendered email as an artifact named `latest-email`.
 
 ## 🚀 Sync with the latest version
 This project is in active development. You can subscribe this repo via `Watch` so that you can be notified once we publish new release.

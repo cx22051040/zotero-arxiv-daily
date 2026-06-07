@@ -6,6 +6,7 @@ from ..utils import extract_markdown_from_pdf, extract_tex_code_from_tar
 from tempfile import TemporaryDirectory
 import feedparser
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import multiprocessing
 import os
 from queue import Empty
@@ -17,6 +18,7 @@ import requests
 T = TypeVar("T")
 
 DOWNLOAD_TIMEOUT = (10, 60)
+RSS_TIMEOUT = (10, 60)
 PDF_EXTRACT_TIMEOUT = 180
 TAR_EXTRACT_TIMEOUT = 180
 
@@ -28,6 +30,15 @@ def _download_file(url: str, path: str) -> None:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     file.write(chunk)
+
+
+def _parse_arxiv_rss(url: str) -> feedparser.FeedParserDict:
+    response = requests.get(url, timeout=RSS_TIMEOUT)
+    response.raise_for_status()
+    feed = feedparser.parse(response.text)
+    if feed.get("bozo"):
+        logger.warning(f"arXiv RSS parser reported a recoverable issue: {feed.get('bozo_exception')}")
+    return feed
 
 
 def _run_in_subprocess(
@@ -49,6 +60,21 @@ def _run_with_hard_timeout(
     operation: str,
     paper_title: str,
 ) -> T | None:
+    if os.name == "nt":
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(func, *args)
+        try:
+            return future.result(timeout=timeout)
+        except FutureTimeoutError:
+            future.cancel()
+            logger.warning(f"{operation} timed out for {paper_title} after {timeout} seconds")
+            return None
+        except Exception as exc:
+            logger.warning(f"{operation} failed for {paper_title}: {type(exc).__name__}: {exc}")
+            return None
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
     start_methods = multiprocessing.get_all_start_methods()
     context = multiprocessing.get_context("fork" if "fork" in start_methods else start_methods[0])
     result_queue = context.Queue()
@@ -118,8 +144,9 @@ class ArxivRetriever(BaseRetriever):
         query = '+'.join(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
         # Get the latest paper from arxiv rss feed
-        feed = feedparser.parse(f"https://rss.arxiv.org/atom/{query}")
-        if 'Feed error for query' in feed.feed.title:
+        feed = _parse_arxiv_rss(f"https://rss.arxiv.org/atom/{query}")
+        feed_title = feed.feed.get("title", "")
+        if 'Feed error for query' in feed_title:
             raise Exception(f"Invalid ARXIV_QUERY: {query}.")
         raw_papers = []
         allowed_announce_types = {"new", "cross"} if include_cross_list else {"new"}
@@ -161,11 +188,13 @@ class ArxivRetriever(BaseRetriever):
         authors = [a.name for a in raw_paper.authors]
         abstract = raw_paper.summary
         pdf_url = raw_paper.pdf_url
-        full_text = extract_text_from_tar(raw_paper)
-        if full_text is None:
-            full_text = extract_text_from_html(raw_paper)
-        if full_text is None:
-            full_text = extract_text_from_pdf(raw_paper)
+        full_text = None
+        if self.config.source.arxiv.get("extract_full_text", True):
+            full_text = extract_text_from_tar(raw_paper)
+            if full_text is None:
+                full_text = extract_text_from_html(raw_paper)
+            if full_text is None:
+                full_text = extract_text_from_pdf(raw_paper)
         return Paper(
             source=self.name,
             title=title,

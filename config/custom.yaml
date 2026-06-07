@@ -2,25 +2,30 @@ zotero:
   user_id: ${oc.env:ZOTERO_ID}
   api_key: ${oc.env:ZOTERO_KEY}
   include_path: null # Or set a list of glob patterns, e.g. ["2026/survey/**","2026/reading-group/**"]
+  fallback_interests: ${oc.env:RESEARCH_INTERESTS,null}
 
 email:
   sender: ${oc.env:SENDER}
   receiver: ${oc.env:RECEIVER}
-  smtp_server: smtp.qq.com
-  smtp_port: 465
+  smtp_server: ${oc.env:SMTP_SERVER,smtp.qq.com}
+  smtp_port: ${oc.decode:${oc.env:SMTP_PORT,465}}
+  use_ssl: ${oc.decode:${oc.env:EMAIL_USE_SSL,null}}
   sender_password: ${oc.env:SENDER_PASSWORD}
+  fallback_path: ${oc.env:EMAIL_FALLBACK_PATH,outputs/latest_email.html}
 
 llm:
   api:
     key: ${oc.env:OPENAI_API_KEY}
-    base_url: ${oc.env:OPENAI_API_BASE}
+    base_url: ${oc.env:OPENAI_API_BASE,https://api.openai.com/v1}
   generation_kwargs:
-    model: gpt-4o-mini
+    model: ${oc.env:LLM_MODEL,gpt-4o-mini}
 
 source:
   arxiv:
     category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
+    extract_full_text: ${oc.decode:${oc.env:ARXIV_EXTRACT_FULL_TEXT,true}}
 
 executor:
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
+  max_paper_num: ${oc.decode:${oc.env:MAX_PAPER_NUM,100}}

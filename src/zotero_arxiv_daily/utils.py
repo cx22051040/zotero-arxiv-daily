@@ -9,6 +9,7 @@ from email.mime.text import MIMEText
 from email.utils import parseaddr, formataddr
 from loguru import logger
 import datetime
+from pathlib import Path
 from omegaconf import DictConfig
 import pymupdf
 import pymupdf.layout
@@ -139,12 +140,15 @@ def glob_match(path:str, pattern:str) -> bool:
     re_pattern = glob.translate(pattern,recursive=True)
     return re.match(re_pattern, path) is not None
 
-def send_email(config:DictConfig, html:str):
+def send_email(config:DictConfig, html:str) -> bool:
     sender = config.email.sender
     receiver = config.email.receiver
     password = config.email.sender_password
     smtp_server = config.email.smtp_server
     smtp_port = config.email.smtp_port
+    use_ssl = config.email.get("use_ssl")
+    if use_ssl is None:
+        use_ssl = int(smtp_port) == 465
     def _format_addr(s):
         name, addr = parseaddr(s)
         return formataddr((Header(name, 'utf-8').encode(), addr))
@@ -156,16 +160,39 @@ def send_email(config:DictConfig, html:str):
     msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
 
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-    except Exception as e:
-        logger.debug(f"Failed to use TLS. {e}\nTry to use SSL.")
-        try:
-            server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-        except Exception as e:
-            logger.debug(f"Failed to use SSL. {e}\nTry to use plain text.")
-            server = smtplib.SMTP(smtp_server, smtp_port)
+        if use_ssl:
+            try:
+                server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+            except Exception as e:
+                logger.debug(f"Failed to use SSL. {e}\nTry to use STARTTLS.")
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+        else:
+            try:
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+            except Exception as e:
+                logger.debug(f"Failed to use STARTTLS. {e}\nTry to use SSL.")
+                try:
+                    server = smtplib.SMTP_SSL(smtp_server, smtp_port)
+                except Exception as e:
+                    logger.debug(f"Failed to use SSL. {e}\nTry to use plain text.")
+                    server = smtplib.SMTP(smtp_server, smtp_port)
 
-    server.login(sender, password)
-    server.sendmail(sender, [receiver], msg.as_string())
-    server.quit()
+        server.login(sender, password)
+        server.sendmail(sender, [receiver], msg.as_string())
+        server.quit()
+        return True
+    except Exception as exc:
+        fallback_path = config.email.get("fallback_path")
+        if not fallback_path:
+            raise
+
+        fallback_path = Path(fallback_path)
+        fallback_path.parent.mkdir(parents=True, exist_ok=True)
+        fallback_path.write_text(html, encoding="utf-8")
+        logger.error(
+            f"Failed to send email via SMTP: {type(exc).__name__}: {exc}. "
+            f"Rendered email saved to {fallback_path}."
+        )
+        return False

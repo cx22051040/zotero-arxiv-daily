@@ -32,6 +32,8 @@ def _base_config():
                 "email.receiver=test@example.com",
                 "email.smtp_server=localhost",
                 "email.smtp_port=1025",
+                "email.use_ssl=false",
+                "email.fallback_path=null",
                 "email.sender_password=test",
                 "llm.api.key=sk-fake",
                 "llm.api.base_url=http://localhost:30000/v1",

@@ -1,21 +1,44 @@
 name: Send emails daily
+
 on:
   workflow_dispatch:
+    inputs:
+      debug:
+        description: "Fetch a small debug batch"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      send_empty:
+        description: "Send an email even when no papers are found"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   schedule:
+    # 06:00 Asia/Shanghai. GitHub schedules use UTC.
     - cron: '0 22 * * *'
+
+concurrency:
+  group: zotero-arxiv-daily
+  cancel-in-progress: false
 
 jobs:
   calculate-and-send:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.REPOSITORY }}
-          ref: ${{ vars.REF }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
 
       - name: Run script
         env:
@@ -25,10 +48,28 @@ jobs:
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
-          CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+          OPENAI_API_BASE: ${{ vars.OPENAI_API_BASE || 'https://api.minimaxi.com/v1' }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_API_BASE || 'https://api.minimaxi.com/v1' }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'MiniMax-M2.7' }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER || 'smtp.qq.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '465' }}
+          EMAIL_USE_SSL: ${{ vars.EMAIL_USE_SSL || 'true' }}
+          EMAIL_FALLBACK_PATH: outputs/latest_email.html
+          RESEARCH_INTERESTS: ${{ vars.RESEARCH_INTERESTS || 'artificial intelligence; computer vision; machine learning; natural language processing; large language models' }}
+          ARXIV_EXTRACT_FULL_TEXT: ${{ vars.ARXIV_EXTRACT_FULL_TEXT || 'false' }}
+          MAX_PAPER_NUM: ${{ vars.MAX_PAPER_NUM || '20' }}
+          DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.debug || 'false' }}
         run: |
-          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          echo "Use custom config: "
-          cat config/custom.yaml
-          uv run src/zotero_arxiv_daily/main.py
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            uv run main.py executor.send_empty=${{ inputs.send_empty }}
+          else
+            uv run main.py
+          fi
+
+      - name: Upload rendered email fallback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-email
+          path: outputs/latest_email.html
+          if-no-files-found: ignore

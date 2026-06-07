@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 from omegaconf import OmegaConf
 
-from zotero_arxiv_daily.executor import Executor, normalize_path_patterns
+from zotero_arxiv_daily.executor import Executor, normalize_fallback_interests, normalize_path_patterns
 from zotero_arxiv_daily.protocol import CorpusPaper
 
 
@@ -43,6 +43,29 @@ def test_normalize_path_patterns_accepts_empty_list():
 
 def test_normalize_path_patterns_accepts_none():
     assert normalize_path_patterns(None, "include_path") is None
+
+
+def test_normalize_fallback_interests_splits_string():
+    assert normalize_fallback_interests("computer vision; large language models\nrobotics") == [
+        "computer vision",
+        "large language models",
+        "robotics",
+    ]
+
+
+def test_build_fallback_corpus(config):
+    from omegaconf import open_dict
+
+    with open_dict(config):
+        config.zotero.fallback_interests = "computer vision; large language models"
+
+    executor = Executor.__new__(Executor)
+    executor.config = config
+    corpus = executor.build_fallback_corpus()
+
+    assert len(corpus) == 2
+    assert corpus[0].abstract == "computer vision"
+    assert corpus[0].paths == ["fallback_interests"]
 
 
 # ---------------------------------------------------------------------------

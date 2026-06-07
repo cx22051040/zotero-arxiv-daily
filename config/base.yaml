@@ -3,11 +3,13 @@ zotero:
   api_key: ??? # An Zotero API key with read access.
   include_path: null # A list of glob patterns marking the Zotero collections that should be included. Example: ["2026/survey/**","2026/reading-group/**"]
   ignore_path: null # A list of glob patterns marking the Zotero collections that should be excluded. Example: ["2026/ignore/**","archive/**"]
+  fallback_interests: null # Optional text/list used as seed corpus when Zotero has no items. Example: "computer vision; large language models"
 
 source:
   arxiv:
     category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
     include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
+    extract_full_text: true # Whether to download and extract paper full text before TLDR generation. Set false for faster local runs.
   biorxiv:
     category: null # The categories of target biorxiv papers. Find categories from [here](https://www.biorxiv.org/). Example: ["biochemistry","animal behavior and cognition"]
   medrxiv:
@@ -18,7 +20,9 @@ email:
   receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
   smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
   smtp_port: ??? # The port of SMTP server. Example: 465
+  use_ssl: null # Whether to use SMTP over SSL. If null, port 465 uses SSL and other ports use STARTTLS. Example: true
   sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+  fallback_path: null # Optional path to save the rendered email when SMTP sending fails. Example: outputs/latest_email.html
 
 llm:
   api:
