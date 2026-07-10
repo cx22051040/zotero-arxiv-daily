@@ -133,8 +133,15 @@ class Executor:
 
     
     def run(self):
-        corpus = self.fetch_zotero_corpus()
-        corpus = self.filter_corpus(corpus)
+        try:
+            corpus = self.fetch_zotero_corpus()
+            corpus = self.filter_corpus(corpus)
+        except Exception as exc:
+            logger.error(
+                f"Failed to fetch Zotero corpus: {type(exc).__name__}: {exc}. "
+                "Falling back to configured research interests if available."
+            )
+            corpus = []
         if len(corpus) == 0:
             corpus = self.build_fallback_corpus()
         if len(corpus) == 0:

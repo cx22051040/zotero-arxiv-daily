@@ -268,6 +268,49 @@ def test_run_no_papers_send_empty_false(config, monkeypatch):
     assert len(sent) == 0, "No email should be sent when no papers and send_empty=false"
 
 
+def test_run_uses_fallback_interests_when_zotero_fetch_fails(config, monkeypatch):
+    """Zotero auth/network failures should not fail the run when fallback interests exist."""
+    import smtplib
+
+    from omegaconf import open_dict
+
+    from tests.canned_responses import make_stub_openai_client, make_stub_smtp, make_sample_paper
+
+    with open_dict(config):
+        config.zotero.fallback_interests = "computer vision; large language models"
+        config.executor.source = ["arxiv"]
+        config.executor.reranker = "api"
+        config.executor.send_empty = False
+
+    monkeypatch.setattr(
+        "zotero_arxiv_daily.executor.Executor.fetch_zotero_corpus",
+        lambda self: (_ for _ in ()).throw(RuntimeError("Invalid key")),
+    )
+
+    stub_client = make_stub_openai_client()
+    monkeypatch.setattr("zotero_arxiv_daily.executor.OpenAI", lambda **kw: stub_client)
+    monkeypatch.setattr("zotero_arxiv_daily.reranker.api.OpenAI", lambda **kw: stub_client)
+
+    import zotero_arxiv_daily.retriever.arxiv_retriever  # noqa: F401
+
+    from zotero_arxiv_daily.retriever.base import registered_retrievers
+
+    monkeypatch.setattr(
+        registered_retrievers["arxiv"],
+        "retrieve_papers",
+        lambda self: [make_sample_paper(title="Fallback E2E Paper")],
+    )
+
+    sent = []
+    monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+
+    executor = Executor(config)
+    executor.run()
+
+    assert len(sent) == 1
+
+
 def test_run_no_papers_send_empty_true(config, monkeypatch):
     """When no papers are found and send_empty=true, empty email is sent."""
     import smtplib
